@@ -1,4 +1,18 @@
 package org.codehaus.mojo.codenarc
+
+import groovy.util.slurpersupport.GPathResult
+import org.apache.maven.artifact.Artifact
+import org.apache.maven.artifact.factory.ArtifactFactory
+import org.apache.maven.artifact.repository.ArtifactRepository
+import org.apache.maven.artifact.resolver.ArtifactResolver
+import org.apache.maven.doxia.siterenderer.Renderer
+import org.apache.maven.doxia.tools.SiteTool
+import org.apache.maven.plugin.MojoFailureException
+import org.apache.maven.project.MavenProject
+import org.apache.maven.reporting.AbstractMavenReport
+import org.codehaus.plexus.resource.ResourceManager
+import org.codehaus.plexus.resource.loader.FileResourceLoader
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -17,21 +31,6 @@ package org.codehaus.mojo.codenarc
  * specific language governing permissions and limitations
  * under the License.
  */
-
-import java.util.List;
-
-import org.apache.maven.reporting.AbstractMavenReport
-import org.apache.maven.project.MavenProject
-import org.apache.maven.artifact.Artifact
-import org.apache.maven.artifact.factory.ArtifactFactory
-import org.apache.maven.artifact.repository.ArtifactRepository
-import org.apache.maven.artifact.resolver.ArtifactResolver
-import org.apache.maven.doxia.siterenderer.Renderer
-import org.apache.maven.doxia.tools.SiteTool
-import org.apache.maven.plugin.MojoFailureException
-import org.codehaus.plexus.resource.ResourceManager
-import org.codehaus.plexus.resource.loader.FileResourceLoader
-
 /**
  * Create a CodeNarc Report.
  *
@@ -429,11 +428,15 @@ log4j.appender.R.layout.ConversionPattern=%d{ISO8601} %c{1} [%t] %p - %m%n
 
       generator.setLog( log )
 
-      generator.setCodeNarcResults( new XmlSlurper().parse( outputFile ) )
+      def codeNarcResults = new XmlSlurper().parse(outputFile)
+
+      generator.setCodeNarcResults(codeNarcResults)
 
       generator.setOutputDirectory( new File( outputDirectory.getAbsolutePath() ) )
 
       generator.generateReport()
+
+      log.info("Results:\n" + createOutputReport(codeNarcResults))
 
       log.info( "totalPriority1Violations is " + generator.totalPriority1Violations )
       log.info( "totalPriority2Violations is " + generator.totalPriority2Violations )
@@ -451,6 +454,17 @@ log4j.appender.R.layout.ConversionPattern=%d{ISO8601} %c{1} [%t] %p - %m%n
         throw new MojoFailureException( "totalPriority3Violations exceeded threshold of ${maxPriority3Violations} errors with " + generator.totalPriority3Violations )
       }
     }
+  }
+
+  static createOutputReport(GPathResult result) {
+    result.Package.collect { Package ->
+      Package.File.collect { file ->
+        def filePath = [result.Project.SourceDirectory.text(), Package.@path.text(), file.@name.text()].join(File.separator)
+        file.Violation.collect { violation ->
+          "\t$filePath:${violation.@lineNumber.text()}: ${violation.@ruleName.text()}}"
+        }
+      }
+    }.flatten().join("\n")
   }
 
   /**
